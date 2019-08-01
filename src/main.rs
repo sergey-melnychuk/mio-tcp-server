@@ -1,7 +1,7 @@
 use mio::net::{TcpListener, TcpStream};
 use mio::{Poll, Token, Ready, PollOpt, Events};
 use std::collections::HashMap;
-use std::io::Read;
+use std::io::{Read, Write};
 
 fn main() {
     let address = "0.0.0.0:8080";
@@ -17,6 +17,7 @@ fn main() {
     let mut sockets: HashMap<Token, TcpStream> = HashMap::new();
     let mut counter: usize = 0;
     let mut buffer = [0 as u8; 1024];
+    let mut response: HashMap<Token, usize> = HashMap::new();
 
     let mut events = Events::with_capacity(1024);
     loop {
@@ -52,6 +53,7 @@ fn main() {
                         match read {
                             Ok(0) => {
                                 sockets.remove(&token);
+                                response.remove(&token);
                                 break;
                             },
                             Ok(n) => {
@@ -64,9 +66,24 @@ fn main() {
                                 panic!("Unexpected error: {}", e)
                         }
                     }
-                    println!("Read {} bytes for token {}", bytes_read, token.0);
-                }
-                _ => ()
+                    response.insert(token, bytes_read);
+
+                    let socket = sockets.get(&token).unwrap();
+                    poll.deregister(socket).unwrap();
+                    poll.register(
+                        socket,
+                        token,
+                        Ready::writable(),
+                        PollOpt::edge() | PollOpt::oneshot()).unwrap();
+                },
+                token if event.readiness().is_writable() => {
+                    let n_bytes = response[&token];
+                    let message = format!("Read {} bytes for token {}\n", n_bytes, token.0);
+                    sockets.get_mut(&token).unwrap().write_all(message.as_bytes()).unwrap();
+                    response.remove(&token);
+                    sockets.remove(&token); // Drop the connection
+                },
+                _ => unreachable!()
             }
         }
     }
