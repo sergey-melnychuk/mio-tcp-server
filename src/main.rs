@@ -6,9 +6,9 @@ use std::borrow::BorrowMut;
 use std::collections::HashMap;
 use std::io::{Read, Write};
 
-use mio::{Events, Interest, Poll, Token};
 use mio::event::Source;
 use mio::net::{TcpListener, TcpStream};
+use mio::{Events, Interest, Poll, Token};
 
 static RESPONSE: &str = "HTTP/1.1 200 OK
 Content-Type: text/html
@@ -19,11 +19,11 @@ hello
 ";
 
 fn is_double_crnl(window: &[u8]) -> bool {
-    window.len() >= 4 &&
-        (window[0] == b'\r') &&
-        (window[1] == b'\n') &&
-        (window[2] == b'\r') &&
-        (window[3] == b'\n')
+    window.len() >= 4
+        && (window[0] == b'\r')
+        && (window[1] == b'\n')
+        && (window[2] == b'\r')
+        && (window[3] == b'\n')
 }
 
 fn main() {
@@ -31,11 +31,9 @@ fn main() {
     let mut listener = TcpListener::bind(address.parse().unwrap()).unwrap();
 
     let mut poll = Poll::new().unwrap();
-    poll.registry().register(
-        &mut listener,
-        Token(0),
-        Interest::READABLE,
-    ).unwrap();
+    poll.registry()
+        .register(&mut listener, Token(0), Interest::READABLE)
+        .unwrap();
 
     let mut counter: usize = 0;
     let mut sockets: HashMap<Token, TcpStream> = HashMap::new();
@@ -47,23 +45,22 @@ fn main() {
         poll.poll(&mut events, None).unwrap();
         for event in &events {
             match event.token() {
-                Token(0) => {
-                    loop {
-                        match listener.accept() {
-                            Ok((mut socket, _)) => {
-                                counter += 1;
-                                let token = Token(counter);
-                                socket.register(poll.registry(), token, Interest::READABLE).unwrap();
+                Token(0) => loop {
+                    match listener.accept() {
+                        Ok((mut socket, _)) => {
+                            counter += 1;
+                            let token = Token(counter);
+                            socket
+                                .register(poll.registry(), token, Interest::READABLE)
+                                .unwrap();
 
-                                sockets.insert(token, socket);
-                                requests.insert(token, Vec::with_capacity(192));
-                            }
-                            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock =>
-                                break,
-                            Err(_) => break
+                            sockets.insert(token, socket);
+                            requests.insert(token, Vec::with_capacity(192));
                         }
+                        Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+                        Err(_) => break,
                     }
-                }
+                },
                 token if event.is_readable() => {
                     loop {
                         let read = sockets.get_mut(&token).unwrap().read(&mut buffer);
@@ -78,29 +75,35 @@ fn main() {
                                     req.push(*b);
                                 }
                             }
-                            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock =>
-                                break,
-                            Err(_) => break
+                            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+                            Err(_) => break,
                         }
                     }
 
-                    let ready = requests.get(&token).unwrap()
-                        .windows(4)
-                        .any(is_double_crnl);
+                    let ready = requests.get(&token).unwrap().windows(4).any(is_double_crnl);
 
                     if ready {
                         let socket = sockets.get_mut(&token).unwrap();
-                        socket.borrow_mut().reregister(poll.registry(), token, Interest::WRITABLE).unwrap();
+                        socket
+                            .borrow_mut()
+                            .reregister(poll.registry(), token, Interest::WRITABLE)
+                            .unwrap();
                     }
                 }
                 token if event.is_writable() => {
                     requests.get_mut(&token).unwrap().clear();
-                    sockets.get_mut(&token).unwrap().write_all(RESPONSE.as_bytes()).unwrap();
+                    sockets
+                        .get_mut(&token)
+                        .unwrap()
+                        .write_all(RESPONSE.as_bytes())
+                        .unwrap();
 
                     let socket = sockets.get_mut(&token).unwrap();
-                    socket.reregister(poll.registry(), token, Interest::READABLE).unwrap();
+                    socket
+                        .reregister(poll.registry(), token, Interest::READABLE)
+                        .unwrap();
                 }
-                _ => unreachable!()
+                _ => unreachable!(),
             }
         }
     }
