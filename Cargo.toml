@@ -1,8 +1,8 @@
 [package]
 name = "mio-tcp-server"
-version = "0.0.1"
+version = "0.0.2"
 authors = ["sergey-melnychuk"]
-edition = "2018"
+edition = "2021"
 
 [dependencies]
-mio = "0.6"
+mio = {version = "0.8.4", features = ["os-poll", "os-ext", "net"]}
